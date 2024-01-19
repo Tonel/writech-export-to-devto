@@ -6,3 +6,5 @@ tmp/
 #ignore specific filenames
 export.xml
 .DS_Store
+.vscode
+*.env
