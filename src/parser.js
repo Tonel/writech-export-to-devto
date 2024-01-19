@@ -75,14 +75,13 @@ function collectPosts(data, postTypes, config) {
           coverImageId: getPostCoverImageId(post),
           type: postType,
           imageUrls: [],
-        },
-        frontmatter: {
           title: getPostTitle(post),
           date: getPostDate(post),
           categories: getCategories(post),
           tags: getTags(post),
           cover_image: getCoverImage(post),
           canonical_url: getCanonicalUrl(post),
+          description: getDescription(post)
         },
         content: translator.getPostContent(post, turndownService, config),
       }));
@@ -102,6 +101,27 @@ function collectPosts(data, postTypes, config) {
 
 function getCanonicalUrl(post) {
   return post.link[0];
+}
+
+function getDescription(post) {
+  let description = "";
+
+  const postMetaDescription = post.postmeta.find(
+    (p) =>
+      p.meta_key &&
+      p.meta_key.length > 0 &&
+      p.meta_key[0] === "_yoast_wpseo_metadesc"
+  );
+
+  if (
+    postMetaDescription &&
+    postMetaDescription.meta_value &&
+    postMetaDescription.meta_value.length > 0
+  ) {
+    description = postMetaDescription.meta_value[0];
+  }
+
+  return description;
 }
 
 function getCoverImage(post) {

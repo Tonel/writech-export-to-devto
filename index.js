@@ -1,9 +1,9 @@
-require('dotenv').config();
+require("dotenv").config();
 
 const path = require("path");
 const parser = require("./src/parser");
-const writer = require("./src/writer");
 const xmlCreator = require("./src/xmlCreator");
+const uploader = require("./src/uploader");
 
 (async () => {
   const config = {
@@ -24,8 +24,7 @@ const xmlCreator = require("./src/xmlCreator");
   // parse data from XML and do Markdown translations
   const posts = await parser.parseFilePromise(config);
 
-  // write files, downloading images as needed
-  await writer.writeFilesPromise(posts, config);
+  uploader.createDevToDrafts(posts);
 
   // happy goodbye
   console.log("\nAll done!");

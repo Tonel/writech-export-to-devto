@@ -1,6 +1,5 @@
 # ignore directories
 node_modules/
-output/
 tmp/
 
 #ignore specific filenames

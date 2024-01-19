@@ -173,7 +173,7 @@ function getPostContent(post, turndownService, config) {
   content = content.replace(/\.(<\/iframe>)/gi, "$1");
 
   content += `
-  \n**P.S.:** The post [${post.title}](${post.link[0]}) appeared first on [Writech](https://writech.run).`;
+  \n***\n_The post "[${post.title}](${post.link[0]})" appeared first on [Writech](https://writech.run)._`;
 
   return content;
 }
