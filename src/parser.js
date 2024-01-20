@@ -2,62 +2,27 @@ const fs = require("fs");
 const luxon = require("luxon");
 const xml2js = require("xml2js");
 
-const shared = require("./shared");
 const settings = require("./settings");
 const translator = require("./translator");
 
-async function parseFilePromise(config) {
-  console.log("\nParsing...");
-  const content = await fs.promises.readFile(config.input, "utf8");
+async function parseFilePromise() {
+  console.log("Parsing export.xml...");
+  const content = await fs.promises.readFile("export.xml", "utf8");
   const data = await xml2js.parseStringPromise(content, {
     trim: true,
     tagNameProcessors: [xml2js.processors.stripPrefix],
   });
 
-  const postTypes = getPostTypes(data, config);
-  const posts = collectPosts(data, postTypes, config);
-
-  const images = [];
-  if (config.saveAttachedImages) {
-    images.push(...collectAttachedImages(data));
-  }
-  if (config.saveScrapedImages) {
-    images.push(...collectScrapedImages(data, postTypes));
-  }
-
-  mergeImagesIntoPosts(images, posts);
+  const posts = collectPosts(data, ["post"]);
 
   return posts;
-}
-
-function getPostTypes(data, config) {
-  if (config.includeOtherTypes) {
-    // search export file for all post types minus some default types we don't want
-    // effectively this will be 'post', 'page', and custom post types
-    const types = data.rss.channel[0].item
-      .map((item) => item.post_type[0])
-      .filter(
-        (type) =>
-          ![
-            "attachment",
-            "revision",
-            "nav_menu_item",
-            "custom_css",
-            "customize_changeset",
-          ].includes(type)
-      );
-    return [...new Set(types)]; // remove duplicates
-  } else {
-    // just plain old vanilla "post" posts
-    return ["post"];
-  }
 }
 
 function getItemsOfType(data, type) {
   return data.rss.channel[0].item.filter((item) => item.post_type[0] === type);
 }
 
-function collectPosts(data, postTypes, config) {
+function collectPosts(data, postTypes) {
   // this is passed into getPostContent() for the markdown conversion
   const turndownService = translator.initTurndownService();
 
@@ -81,21 +46,21 @@ function collectPosts(data, postTypes, config) {
           tags: getTags(post),
           cover_image: getCoverImage(post),
           canonical_url: getCanonicalUrl(post),
-          description: getDescription(post)
+          description: getDescription(post),
+          subtitle: getSubtitle(post),
         },
-        content: translator.getPostContent(post, turndownService, config),
+        content: translator.getPostContent(post, turndownService),
       }));
 
     if (postTypes.length > 1) {
-      console.log(`${postsForType.length} "${postType}" posts found.`);
+      console.log(
+        `${postsForType.length} "${postType}" posts found and parsed`
+      );
     }
 
     allPosts.push(...postsForType);
   });
 
-  if (postTypes.length === 1) {
-    console.log(allPosts.length + " posts found.");
-  }
   return allPosts;
 }
 
@@ -122,6 +87,31 @@ function getDescription(post) {
   }
 
   return description;
+}
+
+function getSubtitle(post) {
+  let subtitle = "";
+
+  const postMetaSubtitle = post.postmeta.find(
+    (p) =>
+      p.meta_key &&
+      p.meta_key.length > 0 &&
+      p.meta_key[0] === "_yoast_wpseo_opengraph-description"
+  );
+
+  if (
+    postMetaSubtitle &&
+    postMetaSubtitle.meta_value &&
+    postMetaSubtitle.meta_value.length > 0
+  ) {
+    subtitle = postMetaSubtitle.meta_value[0];
+  }
+
+  if (post.encoded && post.encoded.length > 1) {
+    subtitle = post.encoded[1]
+  }
+
+  return subtitle;
 }
 
 function getCoverImage(post) {
@@ -172,13 +162,7 @@ function getPostTitle(post) {
 function getPostDate(post) {
   const dateTime = luxon.DateTime.fromRFC2822(post.pubDate[0], { zone: "utc" });
 
-  if (settings.custom_date_formatting) {
-    return dateTime.toFormat(settings.custom_date_formatting);
-  } else if (settings.include_time_with_date) {
-    return dateTime.toISO();
-  } else {
-    return dateTime.toISODate();
-  }
+  return dateTime.toISO();
 }
 
 function getCategories(post) {
@@ -190,9 +174,10 @@ function getCategories(post) {
 
 function getTags(post) {
   return processCategoryTags(post, "post_tag")
-    .filter((t) => !t.includes(" "))
     .filter((t) => !t.includes("tutorial"))
     .filter((t) => !t.includes("guide"))
+    .map((t) => t.replace(/" "/g, ""))
+    .map((t) => t.replace(/-/g, ""))
     .slice(0, 4);
 }
 
@@ -204,74 +189,6 @@ function processCategoryTags(post, domain) {
   return post.category
     .filter((category) => category.$.domain === domain)
     .map(({ $: attributes }) => decodeURIComponent(attributes.nicename));
-}
-
-function collectAttachedImages(data) {
-  const images = getItemsOfType(data, "attachment")
-    // filter to certain image file types
-    .filter((attachment) =>
-      /\.(gif|jpe?g|png)$/i.test(attachment.attachment_url[0])
-    )
-    .map((attachment) => ({
-      id: attachment.post_id[0],
-      postId: attachment.post_parent[0],
-      url: attachment.attachment_url[0],
-    }));
-
-  console.log(images.length + " attached images found.");
-  return images;
-}
-
-function collectScrapedImages(data, postTypes) {
-  const images = [];
-  postTypes.forEach((postType) => {
-    getItemsOfType(data, postType).forEach((post) => {
-      const postId = post.post_id[0];
-      const postContent = post.encoded[0];
-      const postLink = post.link[0];
-
-      const matches = [
-        ...postContent.matchAll(
-          /<img[^>]*src="(.+?\.(?:gif|jpe?g|png))"[^>]*>/gi
-        ),
-      ];
-      matches.forEach((match) => {
-        // base the matched image URL relative to the post URL
-        const url = new URL(match[1], postLink).href;
-        images.push({
-          id: -1,
-          postId: postId,
-          url,
-        });
-      });
-    });
-  });
-
-  console.log(images.length + " images scraped from post body content.");
-  return images;
-}
-
-function mergeImagesIntoPosts(images, posts) {
-  images.forEach((image) => {
-    posts.forEach((post) => {
-      let shouldAttach = false;
-
-      // this image was uploaded as an attachment to this post
-      if (image.postId === post.meta.id) {
-        shouldAttach = true;
-      }
-
-      // this image was set as the featured image for this post
-      if (image.id === post.meta.coverImageId) {
-        shouldAttach = true;
-        post.frontmatter.coverImage = shared.getFilenameFromUrl(image.url);
-      }
-
-      if (shouldAttach && !post.meta.imageUrls.includes(image.url)) {
-        post.meta.imageUrls.push(image.url);
-      }
-    });
-  });
 }
 
 exports.parseFilePromise = parseFilePromise;

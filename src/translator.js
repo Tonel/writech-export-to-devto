@@ -112,9 +112,35 @@ function preProcessing(content) {
       const html = $.html();
       const indexCodeText = html.indexOf($(code).prop("outerHTML"));
       const codeComment = html.substring(indexCodeText - 95, indexCodeText);
-      // eslint-disable-next-line no-useless-escape
-      const modeMatch = codeComment.match(/\"mode\":\"([^"]+)\"/);
-      const language = modeMatch ? modeMatch[1] : null;
+
+      let language = "javascript";
+      if (codeComment.includes("html")) {
+        language = "html";
+      } else if (codeComment.includes("kotlin")) {
+        language = "kotlin";
+      } else if (codeComment.includes("x-java")) {
+        language = "java";
+      } else if (codeComment.includes("php")) {
+        language = "php";
+      } else if (codeComment.includes("text/plain")) {
+        language = null;
+      } else if (codeComment.includes("shell")) {
+        language = "shell";
+      } else if (codeComment.includes("application/json")) {
+        language = "json";
+      } else if (codeComment.includes("xml")) {
+        language = "xml";
+      } else if (codeComment.includes("groovy")) {
+        language = "groovy";
+      } else if (codeComment.includes("sql")) {
+        language = "sql";
+      } else if (codeComment.includes("yaml")) {
+        language = "yaml";
+      } else if (codeComment.includes("powershell")) {
+        language = "powershell";
+      } else if (codeComment.includes("css")) {
+        language = "css";
+      }
 
       $(code).replaceWith(
         `<pre class="wp-block-code ${
@@ -141,22 +167,13 @@ function preProcessing(content) {
   return $.html();
 }
 
-function getPostContent(post, turndownService, config) {
+function getPostContent(post, turndownService) {
   let content = preProcessing(post.encoded[0]);
 
   // insert an empty div element between double line breaks
   // this nifty trick causes turndown to keep adjacent paragraphs separated
   // without mucking up content inside of other elemnts (like <code> blocks)
   content = content.replace(/(\r?\n){2}/g, "\n<div></div>\n");
-
-  if (config.saveScrapedImages) {
-    // writeImageFile() will save all content images to a relative /images
-    // folder so update references in post content to match
-    content = content.replace(
-      /(<img[^>]*src=").*?([^/"]+\.(?:gif|jpe?g|png))("[^>]*>)/gi,
-      "$1images/$2$3"
-    );
-  }
 
   // this is a hack to make <iframe> nodes non-empty by inserting a "." which
   // allows the iframe rule declared in initTurndownService() to take effect
