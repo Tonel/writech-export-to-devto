@@ -108,7 +108,7 @@ function getSubtitle(post) {
   }
 
   if (post.encoded && post.encoded.length > 1) {
-    subtitle = post.encoded[1]
+    subtitle = post.encoded[1];
   }
 
   return subtitle;
@@ -132,7 +132,13 @@ function getCoverImage(post) {
     coverImage = postMetaCoverImage.meta_value[0];
   }
 
-  return coverImage;
+  // regex pattern to remove "-YYYxZZZ" or any similar pattern before the file extension
+  const regexPattern = /-\d+x\d+(?=\.png|\.jpg|\.jpeg|\.gif|\.bmp|\.svg)/;
+
+  // replace the matched pattern with an empty string
+  const hqCoverImage = coverImage.replace(regexPattern, "");
+
+  return hqCoverImage;
 }
 
 function getPostId(post) {

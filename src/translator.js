@@ -106,6 +106,17 @@ function preProcessing(content) {
     });
   }
 
+  const images = $("img");
+  images.toArray().forEach((image) => {
+    const src = $(image).attr("src");
+    // regex pattern to remove "-YYYxZZZ" or any similar pattern before the file extension
+    const regexPattern = /-\d+x\d+(?=\.png|\.jpg|\.jpeg|\.gif|\.bmp|\.svg)/;
+
+    // replace the matched pattern with an empty string
+    const hqSrc = src.replace(regexPattern, "");
+    $(image).attr("src", hqSrc);
+  });
+
   const codeElements = $(".wp-block-codemirror-blocks-code-block.code-block");
   if (codeElements.length > 0) {
     codeElements.toArray().forEach((code) => {
