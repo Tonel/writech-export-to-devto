@@ -1,5 +1,6 @@
 /* eslint-disable no-undef */
 const axios = require("axios");
+const fs = require("fs");
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -21,12 +22,14 @@ async function getDevToPublishedPosts() {
 }
 
 async function createDevToPosts(posts) {
+  const updatedPosts = [...posts];
+
   const publishedPosts = await getDevToPublishedPosts();
 
-  const publishedPostCanonicalUrls = publishedPosts.map((p) => p.canonical_url);
+  const publishedPostTitles = publishedPosts.map((p) => p.title);
 
   for (const post of posts) {
-    if (!publishedPostCanonicalUrls.includes(post.meta.canonical_url)) {
+    if (!publishedPostTitles.includes(post.meta.title)) {
       console.log(`Trying to publish "${post.meta.title}" to dev.to...`);
 
       const devToCreationBody = {
@@ -35,7 +38,6 @@ async function createDevToPosts(posts) {
           body_markdown: post.content,
           published: true,
           main_image: post.meta.cover_image,
-          canonical_url: post.meta.canonical_url,
           description: post.meta.description,
           tags: post.meta.tags,
           organization_id: 8181,
@@ -44,12 +46,26 @@ async function createDevToPosts(posts) {
 
       try {
         const devToApiKey = process.env.DEV_TO_API_KEY;
-        await axios.post("https://dev.to/api/articles", devToCreationBody, {
-          headers: {
-            "api-key": devToApiKey,
-            "content-type": "application/json",
-          },
-        });
+        const newPost = await axios.post(
+          "https://dev.to/api/articles",
+          devToCreationBody,
+          {
+            headers: {
+              "api-key": devToApiKey,
+              "content-type": "application/json",
+            },
+          }
+        );
+
+        const canonicalUrl = newPost.url;
+        const currentPost = updatedPosts.find(
+          (p) => p.meta.id === post.meta.id
+        );
+        currentPost.meta["canonicalUrl"] = canonicalUrl;
+
+        console.log(
+          "WARNING: Remember to update the canonical link on Writech.run!"
+        );
 
         console.log("Post published!");
       } catch (e) {
@@ -62,6 +78,8 @@ async function createDevToPosts(posts) {
       await sleep(1500);
     }
   }
+
+  return updatedPosts;
 }
 
 async function getHashnodePublishedPosts() {
@@ -81,7 +99,6 @@ async function getHashnodePublishedPosts() {
                         node {
                           id
                           title
-                          canonicalUrl
                         }
                       }
                     }
@@ -109,12 +126,10 @@ async function getHashnodePublishedPosts() {
 async function createHashnodePosts(posts) {
   const publishedPosts = await getHashnodePublishedPosts();
 
-  const publishedPostCanonicalUrls = publishedPosts.map(
-    (p) => p.node.canonicalUrl
-  );
+  const publishedPostTitles = publishedPosts.map((p) => p.node.title);
 
   for (const post of posts) {
-    if (!publishedPostCanonicalUrls.includes(post.meta.canonical_url)) {
+    if (!publishedPostTitles.includes(toHashNodeString(post.meta.title))) {
       console.log(`Trying to publish "${post.meta.title}" to hasnode.com...`);
       try {
         const hashnodeApiKey = process.env.HASHNODE_API_KEY;
@@ -122,8 +137,8 @@ async function createHashnodePosts(posts) {
         const hashnodeCreationBody = {
           query: `mutation {
       publishPost(input: {
-        title: "${post.meta.title.replace(/"/g, "'")}"
-        subtitle: "${post.meta.subtitle.replace(/"/g, "'")}"
+        title: "${toHashNodeString(post.meta.title)}"
+        subtitle: "${toHashNodeString(post.meta.subtitle)}"
         publicationId: "65aaf3fad2dea01749fea5f7"
         contentMarkdown: ${JSON.stringify(post.content)}
         slug: "${post.meta.slug}"
@@ -133,8 +148,8 @@ async function createHashnodePosts(posts) {
           coverImageURL: "${post.meta.cover_image}"
         }
         metaTags: {
-          title: "${post.meta.title.replace(/"/g, "'")}"
-          description: "${post.meta.description.replace(/"/g, "'")}"
+          title: "${toHashNodeString(post.meta.title)}"
+          description: "${toHashNodeString(post.meta.description)}"
         }
         tags: [${post.meta.tags
           .map((t) => {
@@ -175,9 +190,132 @@ async function createHashnodePosts(posts) {
   }
 }
 
+function toHashNodeString(str) {
+  return str.replace(/"/g, "'");
+}
+
 function capitalizeFirstLetter(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-exports.createDevToDrafts = createDevToPosts;
+async function updateCanonicalLinks(posts) {
+  const devToPublishedPosts = await getDevToPublishedPosts();
+  const hashnodePublishedPosts = await getHashnodePublishedPosts();
+
+  for (const post of posts) {
+    const currentDevToPost = devToPublishedPosts.find(
+      (p) => p.title === post.meta.title
+    );
+    if (currentDevToPost) {
+      console.log(
+        `Removing canonical link from dev.to article "${post.meta.title}"...`
+      );
+
+      const devToApiKey = process.env.DEV_TO_API_KEY;
+
+      const originalDevToPost = await axios.get(
+        `https://dev.to/api/articles/${currentDevToPost.id}`,
+        {
+          headers: {
+            "api-key": devToApiKey,
+            "content-type": "application/json",
+          },
+        }
+      );
+
+      const devToPostUpdateBody = {
+        article: {
+          title: currentDevToPost.title,
+          body_markdown: originalDevToPost.data.body_markdown,
+          published: true,
+          main_image: currentDevToPost.cover_image,
+          description: currentDevToPost.description,
+          tags: currentDevToPost.tags,
+          organization_id: 8181,
+          canonical_url: "",
+        },
+      };
+
+      try {
+        await axios.put(
+          `https://dev.to/api/articles/${currentDevToPost.id}`,
+          devToPostUpdateBody,
+          {
+            headers: {
+              "api-key": devToApiKey,
+              "content-type": "application/json",
+            },
+          }
+        );
+        console.log("Canonical link removed!");
+      } catch (e) {
+        console.error(e);
+        return;
+      }
+    }
+
+    const currentHashnodePost = hashnodePublishedPosts.find(
+      (p) =>
+        toHashNodeString(p.node.title) === toHashNodeString(post.meta.title)
+    );
+    if (currentHashnodePost) {
+      console.log(
+        `Adding canonical link to Hashnode article "${post.meta.title}"...`
+      );
+
+      try {
+        const hashnodeApiKey = process.env.HASHNODE_API_KEY;
+
+        const hashnodeUpdateBody = {
+          query: `mutation {
+            updatePost(input: {
+                id: "${currentHashnodePost.node.id}"
+                originalArticleURL: "${currentDevToPost.url}"
+            }) {
+              post {
+                id
+                title
+              }
+            }
+          }
+    `,
+        };
+        response = await axios.post(
+          "https://gql.hashnode.com/",
+          hashnodeUpdateBody,
+          {
+            headers: {
+              Authorization: hashnodeApiKey,
+            },
+          }
+        );
+        console.log("Canonical link added!");
+      } catch (e) {
+        console.error(e);
+        return;
+      }
+    }
+  }
+}
+
+async function writeCanonicalLinkUpdateQuery(posts) {
+  const devToPublishedPosts = await getDevToPublishedPosts();
+
+  let query = "";
+
+  for (const post of posts) {
+    const currentDevToPost = devToPublishedPosts.find(
+      (p) => p.title === post.meta.title
+    );
+    if (currentDevToPost) {
+      query += `UPDATE wp_yoast_indexable SET canonical="${currentDevToPost.url}" WHERE permalink="${post.meta.url}/"; \n`;
+    }
+  }
+
+  fs.writeFileSync("query.txt", query);
+}
+
+exports.createDevToPosts = createDevToPosts;
 exports.createHashnodePosts = createHashnodePosts;
+exports.updateCanonicalLinks = updateCanonicalLinks;
+exports.writeCanonicalLinkUpdateQuery = writeCanonicalLinkUpdateQuery;

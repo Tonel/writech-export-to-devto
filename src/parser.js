@@ -36,6 +36,7 @@ function collectPosts(data, postTypes) {
         // meta data isn't written to file, but is used to help with other things
         meta: {
           id: getPostId(post),
+          url: `https://writech.run/blog/${getPostSlug(post)}`,
           slug: getPostSlug(post),
           coverImageId: getPostCoverImageId(post),
           type: postType,
