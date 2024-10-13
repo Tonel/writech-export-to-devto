@@ -12,11 +12,9 @@ const uploader = require("./src/uploader");
   const posts = await parser.parseFilePromise();
 
   // import articles in dev.to
-  //const updatedPosts = await uploader.createDevToPosts(posts);
+  const updatedPosts = await uploader.createDevToPosts(posts);
   // import articles in hashnode.come
-  //await uploader.createHashnodePosts(updatedPosts);
-
-  await uploader.updateCanonicalLinks(posts)
+  await uploader.createHashnodePosts(updatedPosts);
 
   console.log("\nAll done!");
 })().catch((ex) => {

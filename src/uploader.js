@@ -99,6 +99,9 @@ async function getHashnodePublishedPosts() {
                         node {
                           id
                           title
+                          content {
+                            markdown
+                          }
                         }
                       }
                     }
@@ -315,7 +318,156 @@ async function writeCanonicalLinkUpdateQuery(posts) {
   fs.writeFileSync("query.txt", query);
 }
 
+async function generateURLMap(posts) {
+  const devToPublishedPosts = await getDevToPublishedPosts();
+
+  const urlMap = []
+
+  for (const post of posts) {
+    const currentDevToPost = devToPublishedPosts.find(
+      (p) => p.title === post.meta.title
+    );
+    if (currentDevToPost) {
+      urlMap.push(
+        {
+          devto: currentDevToPost.url,
+          writech: post.meta.url
+        }
+      )
+    }
+  }
+
+  return urlMap
+}
+
+async function updateHashnodeLinks(posts) {
+    const hashnodePublishedPosts = await getHashnodePublishedPosts();
+
+    const urlMap = await generateURLMap(posts)
+
+    for (const post of posts) {
+    const currentHashnodePost = hashnodePublishedPosts.find(
+      (p) =>
+        toHashNodeString(p.node.title) === toHashNodeString(post.meta.title)
+    );
+    if (currentHashnodePost) {
+      console.log(
+        `Fixing links on Hashnode article "${post.meta.title}"...`
+      );
+
+      try {
+        const markdown = fixLinks(urlMap, currentHashnodePost.node.content.markdown)
+
+        const hashnodeApiKey = process.env.HASHNODE_API_KEY;
+
+        const hashnodeUpdateBody = {
+          query: `mutation {
+            updatePost(input: {
+                id: "${currentHashnodePost.node.id}"
+                contentMarkdown: ${JSON.stringify(markdown)}
+            }) {
+              post {
+                id
+                title
+              }
+            }
+          }
+    `,
+        };
+        response = await axios.post(
+          "https://gql.hashnode.com/",
+          hashnodeUpdateBody,
+          {
+            headers: {
+              Authorization: hashnodeApiKey,
+            },
+          }
+        );
+
+        console.log("Links updated!");
+      } catch (e) {
+        console.error(e);
+        return;
+      }
+    }
+  }
+}
+
+async function updateDevToLinks(posts) {
+  const devToPublishedPosts = await getDevToPublishedPosts();
+
+  const urlMap = await generateURLMap(posts)
+
+  for (const post of posts) {
+    const currentDevToPost = devToPublishedPosts.find(
+      (p) => p.title === post.meta.title
+    );
+    if (currentDevToPost) {
+    console.log(
+      `Fixing links on dev.to article "${post.meta.title}"...`
+    );
+
+    const devToApiKey = process.env.DEV_TO_API_KEY;
+
+    const originalDevToPost = await axios.get(
+      `https://dev.to/api/articles/${currentDevToPost.id}`,
+      {
+        headers: {
+          "api-key": devToApiKey,
+          "content-type": "application/json",
+        },
+      }
+    );
+
+    const markdown = fixLinks(urlMap, originalDevToPost.data.body_markdown, post.meta.url)
+
+    const devToPostUpdateBody = {
+      article: {
+        title: currentDevToPost.title,
+        body_markdown: markdown,
+        published: true,
+        main_image: currentDevToPost.cover_image,
+        description: currentDevToPost.description,
+        tags: currentDevToPost.tags,
+        organization_id: 8181,
+        canonical_url: "",
+      },
+    };
+
+    try {
+      await axios.put(
+        `https://dev.to/api/articles/${currentDevToPost.id}`,
+        devToPostUpdateBody,
+        {
+          headers: {
+            "api-key": devToApiKey,
+            "content-type": "application/json",
+          },
+        }
+      );
+      console.log("Links updated!");
+    } catch (e) {
+      console.error(e);
+      return;
+    }
+  }
+}
+}
+
+function fixLinks(urlMap, markdown, avoidURL = undefined) {
+  for (const urlItem of urlMap) {
+    if (avoidURL && avoidURL !== urlItem.writech) {
+      markdown = markdown.replace(urlItem.writech, urlItem.devto)
+    }
+  }
+
+  return markdown
+}
+
 exports.createDevToPosts = createDevToPosts;
 exports.createHashnodePosts = createHashnodePosts;
 exports.updateCanonicalLinks = updateCanonicalLinks;
 exports.writeCanonicalLinkUpdateQuery = writeCanonicalLinkUpdateQuery;
+exports.generateURLMap = generateURLMap;
+exports.updateHashnodeLinks = updateHashnodeLinks;
+exports.updateDevToLinks = updateDevToLinks;
